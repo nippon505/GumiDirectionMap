@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>개운여행 지도</title>
+<style>
+*{box-sizing:border-box} html,body,#map{width:100%;height:100%;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;overflow:hidden;background:#f3f4f6}
+#map{position:absolute;inset:0}
+.panel{position:absolute;z-index:50;left:10px;top:max(10px,env(safe-area-inset-top));max-width:350px;background:rgba(255,255,255,.96);border:1px solid #ddd;border-radius:14px;padding:10px 12px;box-shadow:0 4px 18px rgba(0,0,0,.16)}
+.title{font-size:16px;font-weight:800}.sub{font-size:11px;color:#666;margin-top:3px;line-height:1.4}
+.controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+button{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:7px 9px;font-size:12px;cursor:pointer}
+button.active{background:#111827;color:#fff;border-color:#111827}
+.sheet{position:absolute;z-index:60;left:10px;right:10px;bottom:max(10px,env(safe-area-inset-bottom));max-width:520px;margin:auto;background:rgba(255,255,255,.98);border-radius:14px;padding:12px;box-shadow:0 4px 18px rgba(0,0,0,.18);display:none}
+.sheet.show{display:block}.grid{display:grid;grid-template-columns:80px 1fr;gap:5px 8px;font-size:13px}.label{color:#666}.value{font-weight:700}.safe{color:#0a7a2f}.warn{color:#b45309}
+.modalBack{position:absolute;z-index:70;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;padding:14px}.modalBack.show{display:flex}
+.modal{max-width:520px;width:100%;max-height:85vh;overflow:auto;background:#fff;border-radius:14px;padding:14px}
+input,textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:13px}.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
+textarea{min-height:60px}.listItem{padding:9px 0;border-bottom:1px solid #eee;font-size:13px}.pill{display:inline-block;padding:2px 6px;border-radius:999px;background:#eef2ff;font-size:11px;margin-left:4px}
+.dirTag{background:rgba(255,255,255,.9);border:1px solid #aaa;padding:2px 5px;border-radius:6px;font-size:12px;font-weight:800;white-space:nowrap}
+.centerTag{background:#111827;color:#fff;padding:3px 6px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
+@media(max-width:640px){.panel{max-width:285px}.title{font-size:15px}.sub{font-size:10px}button{font-size:11px;padding:6px 8px}}
+</style>
+<script>
+window.navermap_authFailure=function(){
+  alert("네이버 지도 인증 실패입니다. 네이버 클라우드의 Web 서비스 URL에 현재 사이트 주소를 등록했는지 확인해주세요.");
+};
+</script>
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=7hxfk3u637&language=ko"></script>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <div class="title">개운여행 방향지도</div>
+  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함</div>
+  <div class="controls">
+    <button id="btnSector" class="active" onclick="toggleSectors()">방향</button>
+    <button id="btnSafe" onclick="toggleSafe()">안전권</button>
+    <button id="btnRing" class="active" onclick="toggleRings()">거리</button>
+    <button onclick="goCenter()">구미시청</button>
+    <button onclick="showPlaces()">내 장소</button>
+  </div>
+</div>
+
+<div id="sheet" class="sheet">
+  <div class="grid">
+    <div class="label">직선거리</div><div class="value" id="distance">-</div>
+    <div class="label">방위각</div><div class="value" id="bearing">-</div>
+    <div class="label">방향</div><div class="value" id="direction">-</div>
+    <div class="label">경계 판정</div><div class="value" id="edge">-</div>
+  </div>
+  <div class="controls">
+    <button onclick="openSave('visited')">✓ 방문완료</button>
+    <button onclick="openSave('wish')">★ 가고싶은곳</button>
+    <button onclick="closeSheet()">닫기</button>
+  </div>
+</div>
+
+<div id="saveBack" class="modalBack"><div class="modal">
+  <h3 id="saveTitle">장소 저장</h3>
+  <label>장소 이름</label><input id="placeName" placeholder="예: 법흥사">
+  <div class="row">
+    <div><label>방문일</label><input id="visitDate" type="date"></div>
+    <div><label>숙박일수</label><input id="stayDays" type="number" min="0" max="14" value="1"></div>
+  </div>
+  <label style="display:block;margin-top:8px">메모</label><textarea id="memo" placeholder="기도, 숙소, 다음에 볼 곳 등"></textarea>
+  <div class="controls"><button onclick="savePlace()">저장</button><button onclick="closeSave()">취소</button></div>
+</div></div>
+
+<div id="placesBack" class="modalBack"><div class="modal">
+  <h3>내 개운여행 장소</h3>
+  <div class="controls">
+    <button onclick="renderPlaces('all')">전체</button>
+    <button onclick="renderPlaces('visited')">방문완료</button>
+    <button onclick="renderPlaces('wish')">가고싶은곳</button>
+    <button onclick="exportData()">백업</button>
+    <button onclick="document.getElementById('importFile').click()">복원</button>
+    <input id="importFile" type="file" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+  <div id="placeList" style="margin-top:8px"></div>
+  <div class="controls"><button onclick="closePlaces()">닫기</button></div>
+</div></div>
+
+<script>
+const CENTER=new naver.maps.LatLng(36.1195986,128.3443001), R=6371000;
+let map,selected=null,selectMarker=null,selectLine=null,currentSaveType='visited';
+let sectorVisible=true,safeVisible=false,ringVisible=true;
+let sectorOverlays=[],safeOverlays=[],ringOverlays=[],dirLabels=[],savedMarkers=[];
+const BOUNDS=[15,75,105,165,195,255,285,345];
+const SECTORS=[['북',345,15,0,30],['북동',15,75,45,60],['동',75,105,90,30],['남동',105,165,135,60],['남',165,195,180,30],['남서',195,255,225,60],['서',255,285,270,30],['북서',285,345,315,60]];
+
+function rad(v){return v*Math.PI/180} function deg(v){return v*180/Math.PI}
+function destination(lat,lon,b,d){
+  const br=rad(b),p1=rad(lat),l1=rad(lon),x=d/R;
+  const p2=Math.asin(Math.sin(p1)*Math.cos(x)+Math.cos(p1)*Math.sin(x)*Math.cos(br));
+  const l2=l1+Math.atan2(Math.sin(br)*Math.sin(x)*Math.cos(p1),Math.cos(x)-Math.sin(p1)*Math.sin(p2));
+  return new naver.maps.LatLng(deg(p2),((deg(l2)+540)%360)-180);
+}
+function hav(a,b){
+  const p1=rad(a.lat()),p2=rad(b.lat()),dp=rad(b.lat()-a.lat()),dl=rad(b.lng()-a.lng());
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+function brg(a,b){
+  const p1=rad(a.lat()),p2=rad(b.lat()),dl=rad(b.lng()-a.lng());
+  const y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return (deg(Math.atan2(y,x))+360)%360;
+}
+function adiff(a,b){let d=Math.abs(a-b)%360;return Math.min(d,360-d)}
+function edgeDist(b){return Math.min(...BOUNDS.map(v=>adiff(b,v)))}
+function dirFor(b){if(b>=345||b<15)return'북';if(b<75)return'북동';if(b<105)return'동';if(b<165)return'남동';if(b<195)return'남';if(b<255)return'남서';if(b<285)return'서';return'북서'}
+function wedge(s,e,r=600000,step=2){
+  if(e<=s)e+=360;const a=[CENTER];for(let b=s;b<=e;b+=step)a.push(destination(CENTER.lat(),CENTER.lng(),b%360,r));a.push(destination(CENTER.lat(),CENTER.lng(),e%360,r));return a;
+}
+function makeLayers(){
+  SECTORS.forEach(([name,s,e,mid,width])=>{
+    sectorOverlays.push(new naver.maps.Polygon({map,paths:wedge(s,e),strokeColor:'#00A8C8',strokeOpacity:.85,strokeWeight:2,fillColor:'#20C4D6',fillOpacity:.08,clickable:false}));
+    const pos=destination(CENTER.lat(),CENTER.lng(),mid,185000);
+    dirLabels.push(new naver.maps.Marker({map,position:pos,clickable:false,icon:{content:`<div class="dirTag">${name} ${width}°</div>`,anchor:new naver.maps.Point(35,10)}}));
+    safeOverlays.push(new naver.maps.Polygon({map:null,paths:wedge((s+5)%360,(e-5+360)%360),strokeColor:'#16A34A',strokeOpacity:.75,strokeWeight:1,fillColor:'#22C55E',fillOpacity:.07,clickable:false}));
+  });
+  [100,150,200,300].forEach(km=>ringOverlays.push(new naver.maps.Circle({map,center:CENTER,radius:km*1000,strokeColor:km===100?'#F59E0B':'#64748B',strokeOpacity:.8,strokeWeight:km===100?3:1.5,fillOpacity:0,clickable:false})));
+  new naver.maps.Marker({map,position:CENTER,title:'구미시청'});
+  new naver.maps.Marker({map,position:CENTER,clickable:false,icon:{content:'<div class="centerTag">기준점 · 구미시청</div>',anchor:new naver.maps.Point(45,-10)}});
+}
+function init(){
+  map=new naver.maps.Map('map',{center:CENTER,zoom:7,minZoom:6,maxZoom:21,zoomControl:true,zoomControlOptions:{position:naver.maps.Position.RIGHT_CENTER},mapTypeControl:true,scaleControl:true});
+  makeLayers();refreshSaved();
+  naver.maps.Event.addListener(map,'click',e=>{
+    selected=e.coord;const d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),dir=dirFor(b),edge=edgeDist(b);
+    if(selectMarker)selectMarker.setMap(null);if(selectLine)selectLine.setMap(null);
+    selectMarker=new naver.maps.Marker({map,position:selected});
+    selectLine=new naver.maps.Polyline({map,path:[CENTER,selected],strokeColor:'#E11D48',strokeWeight:3,strokeOpacity:.9});
+    distance.textContent=d.toFixed(1)+' km';bearing.textContent=b.toFixed(1)+'°';direction.textContent=dir;
+    edgeEl=document.getElementById('edge');edgeEl.innerHTML=edge<5?`<span class="warn">경계 주의 · ${edge.toFixed(1)}°</span>`:`<span class="safe">안전권 · 경계까지 ${edge.toFixed(1)}°</span>`;
+    sheet.classList.add('show');
+  });
+}
+function goCenter(){map.setCenter(CENTER);map.setZoom(12)}
+function toggleSectors(){sectorVisible=!sectorVisible;sectorOverlays.forEach(x=>x.setMap(sectorVisible?map:null));dirLabels.forEach(x=>x.setMap(sectorVisible?map:null));btnSector.classList.toggle('active',sectorVisible)}
+function toggleSafe(){safeVisible=!safeVisible;safeOverlays.forEach(x=>x.setMap(safeVisible?map:null));btnSafe.classList.toggle('active',safeVisible)}
+function toggleRings(){ringVisible=!ringVisible;ringOverlays.forEach(x=>x.setMap(ringVisible?map:null));btnRing.classList.toggle('active',ringVisible)}
+function closeSheet(){sheet.classList.remove('show')}
+function getPlaces(){try{return JSON.parse(localStorage.getItem('gumiLuckyPlaces')||'[]')}catch(e){return[]}}
+function setPlaces(v){localStorage.setItem('gumiLuckyPlaces',JSON.stringify(v))}
+function openSave(t){if(!selected)return;currentSaveType=t;saveTitle.textContent=t==='visited'?'방문완료 저장':'가고 싶은 곳 저장';placeName.value='';visitDate.value=t==='visited'?new Date().toISOString().slice(0,10):'';stayDays.value=t==='visited'?1:0;memo.value='';saveBack.classList.add('show')}
+function closeSave(){saveBack.classList.remove('show')}
+function savePlace(){
+  const name=placeName.value.trim()||'이름 없는 장소',d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),edge=edgeDist(b);
+  const arr=getPlaces();arr.push({id:Date.now(),type:currentSaveType,name,lat:selected.lat(),lng:selected.lng(),distance:+d.toFixed(1),bearing:+b.toFixed(1),direction:dirFor(b),edge:+edge.toFixed(1),date:visitDate.value,stay:+stayDays.value||0,memo:memo.value.trim()});
+  setPlaces(arr);closeSave();refreshSaved();alert('저장했습니다.');
+}
+function refreshSaved(){
+  savedMarkers.forEach(m=>m.setMap(null));savedMarkers=[];
+  getPlaces().forEach(p=>{
+    const m=new naver.maps.Marker({map,position:new naver.maps.LatLng(p.lat,p.lng),title:p.name,icon:{content:p.type==='visited'?'<div style="font-size:22px">✅</div>':'<div style="font-size:22px">⭐</div>',anchor:new naver.maps.Point(10,10)}});
+    naver.maps.Event.addListener(m,'click',()=>alert(`${p.name}\n${p.direction} · ${p.bearing}° · ${p.distance}km\n${p.date||''}${p.stay?' · '+p.stay+'일':''}\n${p.memo||''}`));savedMarkers.push(m);
+  });
+}
+function showPlaces(){renderPlaces('all');placesBack.classList.add('show')} function closePlaces(){placesBack.classList.remove('show')}
+function renderPlaces(type){
+  const arr=getPlaces().filter(p=>type==='all'||p.type===type),box=placeList;box.innerHTML=arr.length?'':'<div style="color:#777;padding:15px 0">저장된 장소가 없습니다.</div>';
+  arr.forEach(p=>{const el=document.createElement('div');el.className='listItem';el.innerHTML=`<b>${p.type==='visited'?'✅':'⭐'} ${p.name}</b><span class="pill">${p.direction}</span><span class="pill">${p.distance}km</span><div style="color:#666;margin-top:3px">${p.date||'날짜 미정'}${p.stay?' · '+p.stay+'일':''} · ${p.bearing}°</div><div style="margin-top:3px">${p.memo||''}</div><div class="controls"><button onclick="focusPlace(${p.id})">지도에서 보기</button><button onclick="deletePlace(${p.id})">삭제</button></div>`;box.appendChild(el)});
+}
+function focusPlace(id){const p=getPlaces().find(x=>x.id===id);if(!p)return;closePlaces();map.setCenter(new naver.maps.LatLng(p.lat,p.lng));map.setZoom(14)}
+function deletePlace(id){if(!confirm('삭제할까요?'))return;setPlaces(getPlaces().filter(x=>x.id!==id));renderPlaces('all');refreshSaved()}
+function exportData(){const blob=new Blob([JSON.stringify(getPlaces(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='개운여행_장소백업.json';a.click();URL.revokeObjectURL(a.href)}
+function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const v=JSON.parse(r.result);if(!Array.isArray(v))throw 0;setPlaces(v);renderPlaces('all');refreshSaved();alert('복원했습니다.')}catch{alert('백업 파일 형식이 아닙니다.')}};r.readAsText(f)}
+window.onload=init;
+</script>
+</body>
+</html>
