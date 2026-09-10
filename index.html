@@ -36,7 +36,7 @@ window.navermap_authFailure=function(){
 
 <div class="panel">
   <div class="title">개운여행 방향지도</div>
-  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함 · v1.2</div>
+  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함 · v1.3</div>
   <div class="controls">
     <button id="btnSector" class="active" onclick="toggleSectors()">방향</button>
     <button id="btnSafe" onclick="toggleSafe()">안전권</button>
@@ -77,6 +77,25 @@ window.navermap_authFailure=function(){
   <div class="controls"><button onclick="savePlace()">저장</button><button onclick="closeSave()">취소</button></div>
 </div></div>
 
+
+<div id="detailBack" class="modalBack"><div class="modal">
+  <h3 id="detailName">장소 상세</h3>
+  <div class="grid">
+    <div class="label">구분</div><div class="value" id="detailType">-</div>
+    <div class="label">직선거리</div><div class="value" id="detailDistance">-</div>
+    <div class="label">방위각</div><div class="value" id="detailBearing">-</div>
+    <div class="label">방향</div><div class="value" id="detailDirection">-</div>
+    <div class="label">방문일</div><div class="value" id="detailDate">-</div>
+    <div class="label">숙박일수</div><div class="value" id="detailStay">-</div>
+    <div class="label">메모</div><div class="value" id="detailMemo" style="white-space:pre-wrap">-</div>
+  </div>
+  <div class="controls">
+    <button id="detailEditBtn">수정</button>
+    <button id="detailDeleteBtn">삭제</button>
+    <button onclick="closeDetail()">닫기</button>
+  </div>
+</div></div>
+
 <div id="placesBack" class="modalBack"><div class="modal">
   <h3>내 개운여행 장소</h3>
   <div class="controls">
@@ -93,7 +112,7 @@ window.navermap_authFailure=function(){
 
 <script>
 const CENTER=new naver.maps.LatLng(36.1195986,128.3443001), R=6371000;
-let map,selected=null,selectMarker=null,selectLine=null,currentSaveType='visited',editingId=null;
+let map,selected=null,selectMarker=null,selectLine=null,currentSaveType='visited',editingId=null,currentDetailId=null;
 let sectorVisible=true,safeVisible=false,ringVisible=true;
 let sectorOverlays=[],safeOverlays=[],ringOverlays=[],dirLabels=[],savedMarkers=[];
 const BOUNDS=[15,75,105,165,195,255,285,345];
@@ -234,11 +253,54 @@ function savePlace(){
   alert('저장했습니다.');
 }
 function refreshSaved(){
-  savedMarkers.forEach(m=>m.setMap(null));savedMarkers=[];
+  savedMarkers.forEach(m=>m.setMap(null));
+  savedMarkers=[];
   getPlaces().forEach(p=>{
-    const m=new naver.maps.Marker({map,position:new naver.maps.LatLng(p.lat,p.lng),title:p.name,icon:{content:p.type==='visited'?'<div style="font-size:22px">✅</div>':'<div style="font-size:22px">⭐</div>',anchor:new naver.maps.Point(10,10)}});
-    naver.maps.Event.addListener(m,'click',()=>alert(`${p.name}\n${p.direction} · ${p.bearing}° · ${p.distance}km\n${p.date||''}${p.stay?' · '+p.stay+'일':''}\n${p.memo||''}`));savedMarkers.push(m);
+    const m=new naver.maps.Marker({
+      map,
+      position:new naver.maps.LatLng(Number(p.lat),Number(p.lng)),
+      title:p.name,
+      icon:{
+        content:p.type==='visited'
+          ?'<div style="font-size:22px">✅</div>'
+          :'<div style="font-size:22px">⭐</div>',
+        anchor:new naver.maps.Point(10,10)
+      }
+    });
+    naver.maps.Event.addListener(m,'click',()=>openDetail(p.id));
+    savedMarkers.push(m);
   });
+}
+
+function openDetail(id){
+  const p=getPlaces().find(x=>String(x.id)===String(id));
+  if(!p)return;
+  currentDetailId=p.id;
+  document.getElementById('detailName').textContent=p.name||'장소 상세';
+  document.getElementById('detailType').textContent=p.type==='visited'?'방문완료':'가고싶은곳';
+  document.getElementById('detailDistance').textContent=(p.distance??'-')+' km';
+  document.getElementById('detailBearing').textContent=(p.bearing??'-')+'°';
+  document.getElementById('detailDirection').textContent=p.direction||'-';
+  document.getElementById('detailDate').textContent=p.date||'미입력';
+  document.getElementById('detailStay').textContent=(p.stay||0)+'일';
+  document.getElementById('detailMemo').textContent=p.memo||'메모 없음';
+
+  document.getElementById('detailEditBtn').onclick=()=>{
+    closeDetail();
+    editPlace(p.id);
+  };
+  document.getElementById('detailDeleteBtn').onclick=()=>{
+    if(confirm('이 장소 기록을 삭제할까요?')){
+      deletePlace(p.id);
+      closeDetail();
+    }
+  };
+  document.getElementById('detailBack').classList.add('show');
+}
+
+function closeDetail(){
+  document.getElementById('detailBack').classList.remove('show');
+  currentDetailId=null;
 }
 function showPlaces(){
   renderPlaces('all');
@@ -275,9 +337,9 @@ function focusPlace(id){
   map.setZoom(14);
 }
 function deletePlace(id){
-  if(!confirm('삭제할까요?'))return;
   setPlaces(getPlaces().filter(x=>String(x.id)!==String(id)));
-  renderPlaces('all');
+  const placesBack=document.getElementById('placesBack');
+  if(placesBack && placesBack.classList.contains('show')) renderPlaces('all');
   refreshSaved();
 }
 function exportData(){const blob=new Blob([JSON.stringify(getPlaces(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='개운여행_장소백업.json';a.click();URL.revokeObjectURL(a.href)}
