@@ -36,7 +36,7 @@ window.navermap_authFailure=function(){
 
 <div class="panel">
   <div class="title">개운여행 방향지도</div>
-  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함 · v1.1</div>
+  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함 · v1.2</div>
   <div class="controls">
     <button id="btnSector" class="active" onclick="toggleSectors()">방향</button>
     <button id="btnSafe" onclick="toggleSafe()">안전권</button>
@@ -137,63 +137,101 @@ function init(){
   map=new naver.maps.Map('map',{center:CENTER,zoom:7,minZoom:6,maxZoom:21,zoomControl:true,zoomControlOptions:{position:naver.maps.Position.RIGHT_CENTER},mapTypeControl:true,scaleControl:true});
   makeLayers();refreshSaved();
   naver.maps.Event.addListener(map,'click',e=>{
-    selected=e.coord;const d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),dir=dirFor(b),edge=edgeDist(b);
-    if(selectMarker)selectMarker.setMap(null);if(selectLine)selectLine.setMap(null);
+    selected=e.coord;
+    const d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),dir=dirFor(b),edge=edgeDist(b);
+    if(selectMarker)selectMarker.setMap(null);
+    if(selectLine)selectLine.setMap(null);
     selectMarker=new naver.maps.Marker({map,position:selected});
     selectLine=new naver.maps.Polyline({map,path:[CENTER,selected],strokeColor:'#E11D48',strokeWeight:3,strokeOpacity:.9});
-    distance.textContent=d.toFixed(1)+' km';bearing.textContent=b.toFixed(1)+'°';direction.textContent=dir;
-    edgeEl=document.getElementById('edge');edgeEl.innerHTML=edge<5?`<span class="warn">경계 주의 · ${edge.toFixed(1)}°</span>`:`<span class="safe">안전권 · 경계까지 ${edge.toFixed(1)}°</span>`;
-    sheet.classList.add('show');
+    document.getElementById('distance').textContent=d.toFixed(1)+' km';
+    document.getElementById('bearing').textContent=b.toFixed(1)+'°';
+    document.getElementById('direction').textContent=dir;
+    const edgeEl=document.getElementById('edge');
+    edgeEl.innerHTML=edge<5?`<span class="warn">경계 주의 · ${edge.toFixed(1)}°</span>`:`<span class="safe">안전권 · 경계까지 ${edge.toFixed(1)}°</span>`;
+    document.getElementById('sheet').classList.add('show');
   });
 }
 function goCenter(){map.setCenter(CENTER);map.setZoom(12)}
-function toggleSectors(){sectorVisible=!sectorVisible;sectorOverlays.forEach(x=>x.setMap(sectorVisible?map:null));dirLabels.forEach(x=>x.setMap(sectorVisible?map:null));btnSector.classList.toggle('active',sectorVisible)}
-function toggleSafe(){safeVisible=!safeVisible;safeOverlays.forEach(x=>x.setMap(safeVisible?map:null));btnSafe.classList.toggle('active',safeVisible)}
-function toggleRings(){ringVisible=!ringVisible;ringOverlays.forEach(x=>x.setMap(ringVisible?map:null));btnRing.classList.toggle('active',ringVisible)}
-function closeSheet(){sheet.classList.remove('show')}
+function toggleSectors(){
+  sectorVisible=!sectorVisible;
+  sectorOverlays.forEach(x=>x.setMap(sectorVisible?map:null));
+  dirLabels.forEach(x=>x.setMap(sectorVisible?map:null));
+  document.getElementById('btnSector').classList.toggle('active',sectorVisible);
+}
+function toggleSafe(){
+  safeVisible=!safeVisible;
+  safeOverlays.forEach(x=>x.setMap(safeVisible?map:null));
+  document.getElementById('btnSafe').classList.toggle('active',safeVisible);
+}
+function toggleRings(){
+  ringVisible=!ringVisible;
+  ringOverlays.forEach(x=>x.setMap(ringVisible?map:null));
+  document.getElementById('btnRing').classList.toggle('active',ringVisible);
+}
+function closeSheet(){document.getElementById('sheet').classList.remove('show')}
 function getPlaces(){try{return JSON.parse(localStorage.getItem('gumiLuckyPlaces')||'[]')}catch(e){return[]}}
 function setPlaces(v){localStorage.setItem('gumiLuckyPlaces',JSON.stringify(v))}
 function openSave(t){
   if(!selected)return;
   editingId=null;
   currentSaveType=t;
-  saveTitle.textContent=t==='visited'?'방문완료 저장':'가고 싶은 곳 저장';
-  placeName.value='';
-  placeType.value=t;
-  visitDate.value=t==='visited'?new Date().toISOString().slice(0,10):'';
-  stayDays.value=t==='visited'?1:0;
-  memo.value='';
-  saveBack.classList.add('show');
+  document.getElementById('saveTitle').textContent=t==='visited'?'방문완료 저장':'가고 싶은 곳 저장';
+  document.getElementById('placeName').value='';
+  document.getElementById('placeType').value=t;
+  document.getElementById('visitDate').value=t==='visited'?new Date().toISOString().slice(0,10):'';
+  document.getElementById('stayDays').value=t==='visited'?1:0;
+  document.getElementById('memo').value='';
+  document.getElementById('saveBack').classList.add('show');
 }
-function closeSave(){saveBack.classList.remove('show');editingId=null}
+function closeSave(){
+  document.getElementById('saveBack').classList.remove('show');
+  editingId=null;
+}
 function editPlace(id){
-  const p=getPlaces().find(x=>x.id===id);if(!p)return;
-  editingId=id;
-  selected=new naver.maps.LatLng(p.lat,p.lng);
+  const p=getPlaces().find(x=>String(x.id)===String(id));
+  if(!p){alert('수정할 기록을 찾지 못했습니다.');return;}
+  editingId=p.id;
+  selected=new naver.maps.LatLng(Number(p.lat),Number(p.lng));
   currentSaveType=p.type||'visited';
-  saveTitle.textContent='장소 기록 수정';
-  placeName.value=p.name||'';
-  placeType.value=p.type||'visited';
-  visitDate.value=p.date||'';
-  stayDays.value=Number.isFinite(+p.stay)?+p.stay:0;
-  memo.value=p.memo||'';
+  document.getElementById('saveTitle').textContent='장소 기록 수정';
+  document.getElementById('placeName').value=p.name||'';
+  document.getElementById('placeType').value=p.type||'visited';
+  document.getElementById('visitDate').value=p.date||'';
+  document.getElementById('stayDays').value=Number.isFinite(Number(p.stay))?Number(p.stay):0;
+  document.getElementById('memo').value=p.memo||'';
   closePlaces();
-  saveBack.classList.add('show');
+  document.getElementById('saveBack').classList.add('show');
 }
 function savePlace(){
-  const type=placeType.value||currentSaveType;
-  const name=placeName.value.trim()||'이름 없는 장소';
+  const type=document.getElementById('placeType').value||currentSaveType;
+  const name=document.getElementById('placeName').value.trim()||'이름 없는 장소';
+  const date=document.getElementById('visitDate').value;
+  const stay=Math.min(14,Math.max(0,Number(document.getElementById('stayDays').value)||0));
+  const memoText=document.getElementById('memo').value.trim();
   const arr=getPlaces();
+
   if(editingId!==null){
-    const i=arr.findIndex(x=>x.id===editingId);
+    const i=arr.findIndex(x=>String(x.id)===String(editingId));
     if(i<0){alert('수정할 기록을 찾지 못했습니다.');return;}
-    arr[i]={...arr[i],type,name,date:visitDate.value,stay:Math.min(14,Math.max(0,+stayDays.value||0)),memo:memo.value.trim()};
-    setPlaces(arr);closeSave();refreshSaved();alert('수정했습니다.');
+    arr[i]={...arr[i],type,name,date,stay,memo:memoText};
+    setPlaces(arr);
+    closeSave();
+    refreshSaved();
+    renderPlaces('all');
+    alert('수정했습니다.');
     return;
   }
+
   const d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),edge=edgeDist(b);
-  arr.push({id:Date.now(),type,name,lat:selected.lat(),lng:selected.lng(),distance:+d.toFixed(1),bearing:+b.toFixed(1),direction:dirFor(b),edge:+edge.toFixed(1),date:visitDate.value,stay:Math.min(14,Math.max(0,+stayDays.value||0)),memo:memo.value.trim()});
-  setPlaces(arr);closeSave();refreshSaved();alert('저장했습니다.');
+  arr.push({
+    id:Date.now(),type,name,lat:selected.lat(),lng:selected.lng(),
+    distance:+d.toFixed(1),bearing:+b.toFixed(1),direction:dirFor(b),edge:+edge.toFixed(1),
+    date,stay,memo:memoText
+  });
+  setPlaces(arr);
+  closeSave();
+  refreshSaved();
+  alert('저장했습니다.');
 }
 function refreshSaved(){
   savedMarkers.forEach(m=>m.setMap(null));savedMarkers=[];
@@ -202,13 +240,46 @@ function refreshSaved(){
     naver.maps.Event.addListener(m,'click',()=>alert(`${p.name}\n${p.direction} · ${p.bearing}° · ${p.distance}km\n${p.date||''}${p.stay?' · '+p.stay+'일':''}\n${p.memo||''}`));savedMarkers.push(m);
   });
 }
-function showPlaces(){renderPlaces('all');placesBack.classList.add('show')} function closePlaces(){placesBack.classList.remove('show')}
-function renderPlaces(type){
-  const arr=getPlaces().filter(p=>type==='all'||p.type===type),box=placeList;box.innerHTML=arr.length?'':'<div style="color:#777;padding:15px 0">저장된 장소가 없습니다.</div>';
-  arr.forEach(p=>{const el=document.createElement('div');el.className='listItem';el.innerHTML=`<b>${p.type==='visited'?'✅':'⭐'} ${p.name}</b><span class="pill">${p.direction}</span><span class="pill">${p.distance}km</span><div style="color:#666;margin-top:3px">${p.date||'날짜 미정'}${p.stay?' · '+p.stay+'일':''} · ${p.bearing}°</div><div style="margin-top:3px">${p.memo||''}</div><div class="controls"><button onclick="focusPlace(${p.id})">지도에서 보기</button><button onclick="editPlace(${p.id})">수정</button><button onclick="deletePlace(${p.id})">삭제</button></div>`;box.appendChild(el)});
+function showPlaces(){
+  renderPlaces('all');
+  document.getElementById('placesBack').classList.add('show');
 }
-function focusPlace(id){const p=getPlaces().find(x=>x.id===id);if(!p)return;closePlaces();map.setCenter(new naver.maps.LatLng(p.lat,p.lng));map.setZoom(14)}
-function deletePlace(id){if(!confirm('삭제할까요?'))return;setPlaces(getPlaces().filter(x=>x.id!==id));renderPlaces('all');refreshSaved()}
+function closePlaces(){
+  document.getElementById('placesBack').classList.remove('show');
+}
+function renderPlaces(type){
+  const arr=getPlaces().filter(p=>type==='all'||p.type===type);
+  const box=document.getElementById('placeList');
+  box.innerHTML=arr.length?'':'<div style="color:#777;padding:15px 0">저장된 장소가 없습니다.</div>';
+  arr.forEach(p=>{
+    const el=document.createElement('div');
+    el.className='listItem';
+    el.innerHTML=`<b>${p.type==='visited'?'✅':'⭐'} ${p.name}</b>
+      <span class="pill">${p.direction}</span>
+      <span class="pill">${p.distance}km</span>
+      <div style="color:#666;margin-top:3px">${p.date||'날짜 미정'}${p.stay?' · '+p.stay+'일':''} · ${p.bearing}°</div>
+      <div style="margin-top:3px">${p.memo||''}</div>
+      <div class="controls">
+        <button onclick="focusPlace('${p.id}')">지도에서 보기</button>
+        <button onclick="editPlace('${p.id}')">수정</button>
+        <button onclick="deletePlace('${p.id}')">삭제</button>
+      </div>`;
+    box.appendChild(el);
+  });
+}
+function focusPlace(id){
+  const p=getPlaces().find(x=>String(x.id)===String(id));
+  if(!p)return;
+  closePlaces();
+  map.setCenter(new naver.maps.LatLng(Number(p.lat),Number(p.lng)));
+  map.setZoom(14);
+}
+function deletePlace(id){
+  if(!confirm('삭제할까요?'))return;
+  setPlaces(getPlaces().filter(x=>String(x.id)!==String(id)));
+  renderPlaces('all');
+  refreshSaved();
+}
 function exportData(){const blob=new Blob([JSON.stringify(getPlaces(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='개운여행_장소백업.json';a.click();URL.revokeObjectURL(a.href)}
 function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const v=JSON.parse(r.result);if(!Array.isArray(v))throw 0;setPlaces(v);renderPlaces('all');refreshSaved();alert('복원했습니다.')}catch{alert('백업 파일 형식이 아닙니다.')}};r.readAsText(f)}
 window.onload=init;
