@@ -18,7 +18,7 @@ button.active{background:#111827;color:#fff;border-color:#111827}
 .sheet.show{display:block}.grid{display:grid;grid-template-columns:80px 1fr;gap:5px 8px;font-size:13px}.label{color:#666}.value{font-weight:700}.safe{color:#0a7a2f}.warn{color:#b45309}
 .modalBack{position:absolute;z-index:70;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;padding:14px}.modalBack.show{display:flex}
 .modal{max-width:520px;width:100%;max-height:85vh;overflow:auto;background:#fff;border-radius:14px;padding:14px}
-input,textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:13px}.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
+input,select,textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:13px;background:#fff}.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
 textarea{min-height:60px}.listItem{padding:9px 0;border-bottom:1px solid #eee;font-size:13px}.pill{display:inline-block;padding:2px 6px;border-radius:999px;background:#eef2ff;font-size:11px;margin-left:4px}
 .dirTag{background:rgba(255,255,255,.9);border:1px solid #aaa;padding:2px 5px;border-radius:6px;font-size:12px;font-weight:800;white-space:nowrap}
 .centerTag{background:#111827;color:#fff;padding:3px 6px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -36,7 +36,7 @@ window.navermap_authFailure=function(){
 
 <div class="panel">
   <div class="title">개운여행 방향지도</div>
-  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함</div>
+  <div class="sub">기준점: 구미시청 · 정방향 30° / 사방 60° · 경계 5° 이내는 피함 · v1.1</div>
   <div class="controls">
     <button id="btnSector" class="active" onclick="toggleSectors()">방향</button>
     <button id="btnSafe" onclick="toggleSafe()">안전권</button>
@@ -64,6 +64,12 @@ window.navermap_authFailure=function(){
   <h3 id="saveTitle">장소 저장</h3>
   <label>장소 이름</label><input id="placeName" placeholder="예: 법흥사">
   <div class="row">
+    <div><label>구분</label>
+      <select id="placeType">
+        <option value="visited">방문완료</option>
+        <option value="wish">가고싶은곳</option>
+      </select>
+    </div>
     <div><label>방문일</label><input id="visitDate" type="date"></div>
     <div><label>숙박일수</label><input id="stayDays" type="number" min="0" max="14" value="1"></div>
   </div>
@@ -87,7 +93,7 @@ window.navermap_authFailure=function(){
 
 <script>
 const CENTER=new naver.maps.LatLng(36.1195986,128.3443001), R=6371000;
-let map,selected=null,selectMarker=null,selectLine=null,currentSaveType='visited';
+let map,selected=null,selectMarker=null,selectLine=null,currentSaveType='visited',editingId=null;
 let sectorVisible=true,safeVisible=false,ringVisible=true;
 let sectorOverlays=[],safeOverlays=[],ringOverlays=[],dirLabels=[],savedMarkers=[];
 const BOUNDS=[15,75,105,165,195,255,285,345];
@@ -147,11 +153,46 @@ function toggleRings(){ringVisible=!ringVisible;ringOverlays.forEach(x=>x.setMap
 function closeSheet(){sheet.classList.remove('show')}
 function getPlaces(){try{return JSON.parse(localStorage.getItem('gumiLuckyPlaces')||'[]')}catch(e){return[]}}
 function setPlaces(v){localStorage.setItem('gumiLuckyPlaces',JSON.stringify(v))}
-function openSave(t){if(!selected)return;currentSaveType=t;saveTitle.textContent=t==='visited'?'방문완료 저장':'가고 싶은 곳 저장';placeName.value='';visitDate.value=t==='visited'?new Date().toISOString().slice(0,10):'';stayDays.value=t==='visited'?1:0;memo.value='';saveBack.classList.add('show')}
-function closeSave(){saveBack.classList.remove('show')}
+function openSave(t){
+  if(!selected)return;
+  editingId=null;
+  currentSaveType=t;
+  saveTitle.textContent=t==='visited'?'방문완료 저장':'가고 싶은 곳 저장';
+  placeName.value='';
+  placeType.value=t;
+  visitDate.value=t==='visited'?new Date().toISOString().slice(0,10):'';
+  stayDays.value=t==='visited'?1:0;
+  memo.value='';
+  saveBack.classList.add('show');
+}
+function closeSave(){saveBack.classList.remove('show');editingId=null}
+function editPlace(id){
+  const p=getPlaces().find(x=>x.id===id);if(!p)return;
+  editingId=id;
+  selected=new naver.maps.LatLng(p.lat,p.lng);
+  currentSaveType=p.type||'visited';
+  saveTitle.textContent='장소 기록 수정';
+  placeName.value=p.name||'';
+  placeType.value=p.type||'visited';
+  visitDate.value=p.date||'';
+  stayDays.value=Number.isFinite(+p.stay)?+p.stay:0;
+  memo.value=p.memo||'';
+  closePlaces();
+  saveBack.classList.add('show');
+}
 function savePlace(){
-  const name=placeName.value.trim()||'이름 없는 장소',d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),edge=edgeDist(b);
-  const arr=getPlaces();arr.push({id:Date.now(),type:currentSaveType,name,lat:selected.lat(),lng:selected.lng(),distance:+d.toFixed(1),bearing:+b.toFixed(1),direction:dirFor(b),edge:+edge.toFixed(1),date:visitDate.value,stay:+stayDays.value||0,memo:memo.value.trim()});
+  const type=placeType.value||currentSaveType;
+  const name=placeName.value.trim()||'이름 없는 장소';
+  const arr=getPlaces();
+  if(editingId!==null){
+    const i=arr.findIndex(x=>x.id===editingId);
+    if(i<0){alert('수정할 기록을 찾지 못했습니다.');return;}
+    arr[i]={...arr[i],type,name,date:visitDate.value,stay:Math.min(14,Math.max(0,+stayDays.value||0)),memo:memo.value.trim()};
+    setPlaces(arr);closeSave();refreshSaved();alert('수정했습니다.');
+    return;
+  }
+  const d=hav(CENTER,selected)/1000,b=brg(CENTER,selected),edge=edgeDist(b);
+  arr.push({id:Date.now(),type,name,lat:selected.lat(),lng:selected.lng(),distance:+d.toFixed(1),bearing:+b.toFixed(1),direction:dirFor(b),edge:+edge.toFixed(1),date:visitDate.value,stay:Math.min(14,Math.max(0,+stayDays.value||0)),memo:memo.value.trim()});
   setPlaces(arr);closeSave();refreshSaved();alert('저장했습니다.');
 }
 function refreshSaved(){
@@ -164,7 +205,7 @@ function refreshSaved(){
 function showPlaces(){renderPlaces('all');placesBack.classList.add('show')} function closePlaces(){placesBack.classList.remove('show')}
 function renderPlaces(type){
   const arr=getPlaces().filter(p=>type==='all'||p.type===type),box=placeList;box.innerHTML=arr.length?'':'<div style="color:#777;padding:15px 0">저장된 장소가 없습니다.</div>';
-  arr.forEach(p=>{const el=document.createElement('div');el.className='listItem';el.innerHTML=`<b>${p.type==='visited'?'✅':'⭐'} ${p.name}</b><span class="pill">${p.direction}</span><span class="pill">${p.distance}km</span><div style="color:#666;margin-top:3px">${p.date||'날짜 미정'}${p.stay?' · '+p.stay+'일':''} · ${p.bearing}°</div><div style="margin-top:3px">${p.memo||''}</div><div class="controls"><button onclick="focusPlace(${p.id})">지도에서 보기</button><button onclick="deletePlace(${p.id})">삭제</button></div>`;box.appendChild(el)});
+  arr.forEach(p=>{const el=document.createElement('div');el.className='listItem';el.innerHTML=`<b>${p.type==='visited'?'✅':'⭐'} ${p.name}</b><span class="pill">${p.direction}</span><span class="pill">${p.distance}km</span><div style="color:#666;margin-top:3px">${p.date||'날짜 미정'}${p.stay?' · '+p.stay+'일':''} · ${p.bearing}°</div><div style="margin-top:3px">${p.memo||''}</div><div class="controls"><button onclick="focusPlace(${p.id})">지도에서 보기</button><button onclick="editPlace(${p.id})">수정</button><button onclick="deletePlace(${p.id})">삭제</button></div>`;box.appendChild(el)});
 }
 function focusPlace(id){const p=getPlaces().find(x=>x.id===id);if(!p)return;closePlaces();map.setCenter(new naver.maps.LatLng(p.lat,p.lng));map.setZoom(14)}
 function deletePlace(id){if(!confirm('삭제할까요?'))return;setPlaces(getPlaces().filter(x=>x.id!==id));renderPlaces('all');refreshSaved()}
